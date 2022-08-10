@@ -112,6 +112,7 @@ import net.minecraft.server.v1_16_R3.IRegistryCustom;
 import net.minecraft.server.v1_16_R3.Item;
 import net.minecraft.server.v1_16_R3.ItemActionContext;
 import net.minecraft.server.v1_16_R3.ItemStack;
+import net.minecraft.server.v1_16_R3.Items;
 import net.minecraft.server.v1_16_R3.MinecraftKey;
 import net.minecraft.server.v1_16_R3.MinecraftServer;
 import net.minecraft.server.v1_16_R3.MovingObjectPositionBlock;
@@ -145,6 +146,7 @@ import net.minecraft.server.v1_16_R3.WorldServer;
 import net.minecraft.server.v1_16_R3.WorldSettings;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World.Environment;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.craftbukkit.v1_16_R3.CraftServer;
@@ -186,6 +188,8 @@ import static com.google.common.base.Preconditions.checkState;
 
 public final class Spigot_v1_16_R3 implements BukkitImplAdapter {
 
+    private static Map<String, String> mohistKeyMapping;
+
     private final Logger logger = Logger.getLogger(getClass().getCanonicalName());
 
     private final Field nbtListTagListField;
@@ -193,6 +197,29 @@ public final class Spigot_v1_16_R3 implements BukkitImplAdapter {
     private final Method getChunkFutureMethod;
     private final Field chunkProviderExecutorField;
     private final Watchdog watchdog;
+
+    private static Map<String, String> getMohistKeyMapping() {
+        if (mohistKeyMapping == null) {
+            mohistKeyMapping = new HashMap<String, String>();
+            for (Material material : Material.values()) {
+                try {
+                    String key =  material.createBlockData().getAsString();
+                    if (key.contains("[")) {
+                        key = key.substring(0, key.indexOf("["));
+                    }
+                    mohistKeyMapping.put(material.getKey().toString(), key);
+                    //Bukkit.getLogger().info(material.getKey().toString() + " - " + key);
+                } catch (Exception ex) {
+                    //Probably not a block, ignoring it
+                }
+            }
+        }
+        return mohistKeyMapping;
+    }
+    
+    private static String getMinecraftKey(String key) {
+        return getMohistKeyMapping().get(key);
+    }
 
     // ------------------------------------------------------------------------
     // Code that may break between versions of Minecraft
@@ -312,17 +339,27 @@ public final class Spigot_v1_16_R3 implements BukkitImplAdapter {
     }
 
     private static Block getBlockFromType(BlockType blockType) {
-        return IRegistry.BLOCK.get(MinecraftKey.a(blockType.getId()));
+        Block block = IRegistry.BLOCK.get(MinecraftKey.a(blockType.getId()));
+        
+        if (!blockType.getId().equals("minecraft:air") && block == Blocks.AIR)
+            return IRegistry.BLOCK.get(MinecraftKey.a(getMinecraftKey(blockType.getId())));
+        
+        return block;
     }
 
     private static Item getItemFromType(ItemType itemType) {
-        return IRegistry.ITEM.get(MinecraftKey.a(itemType.getId()));
+        Item item = IRegistry.ITEM.get(MinecraftKey.a(itemType.getId()));
+        
+        if (!itemType.getId().equals("minecraft:air") && item == Items.AIR)
+            return IRegistry.ITEM.get(MinecraftKey.a(getMinecraftKey(itemType.getId())));
+        
+        return item;
     }
 
     @Override
     public OptionalInt getInternalBlockStateId(BlockData data) {
         IBlockData state = ((CraftBlockData) data).getState();
-        int combinedId = Block.getCombinedId(state);
+        int combinedId = data.getMaterial().getId();
         return combinedId == 0 && state.getBlock() != Blocks.AIR ? OptionalInt.empty() : OptionalInt.of(combinedId);
     }
 
